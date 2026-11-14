@@ -25,7 +25,7 @@ Then open `chrome://extensions`, turn on **Developer mode**, click **Load unpack
 
 ## Set up
 
-1. **Create a solutions repo** on GitHub (private or public). An empty repo is fine.
+1. **Create a solutions repo** on GitHub (private or public). Tick *Add a README* when creating it, so the repo has a first commit.
 2. **Create a fine-grained personal access token** at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
    - Repository access: *Only select repositories* → your solutions repo
    - Permissions → Repository → **Contents: Read and write**
