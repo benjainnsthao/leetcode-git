@@ -4,6 +4,10 @@
 import type {
   BgRequest,
   MetaInput,
+  NotesDraftResponse,
+  NotesGetResponse,
+  NotesListResponse,
+  NotesPutResponse,
   PullResponse,
   PushResponse,
   SimpleResponse,
@@ -12,8 +16,11 @@ import type {
 import {
   commitMessage,
   isValidLang,
+  isValidNoteName,
   isValidSlug,
   normalizeBaseDir,
+  notesCommitMessage,
+  notesDir,
   solutionPath,
   type ProblemMeta,
 } from '../core/paths';
@@ -28,6 +35,7 @@ export interface ServiceDeps {
 }
 
 const MAX_CONTENT = 400_000;
+const MAX_NOTE = 1_500_000;
 
 function baseKey(slug: string, lang: string): string {
   return `base:${slug}:${lang}`;
@@ -39,8 +47,17 @@ function errorText(e: unknown): string {
   return 'Unexpected error.';
 }
 
+function draftKey(slug: string): string {
+  return `notesDraft:${slug}`;
+}
+
 function checkMeta(slug: unknown, lang: unknown, meta: unknown): ProblemMeta {
-  if (!isValidSlug(slug) || !isValidLang(lang)) throw new Error('Invalid problem or language.');
+  if (!isValidLang(lang)) throw new Error('Invalid problem or language.');
+  return checkProblem(slug, meta);
+}
+
+function checkProblem(slug: unknown, meta: unknown): ProblemMeta {
+  if (!isValidSlug(slug)) throw new Error('Invalid problem or language.');
   const m = meta as MetaInput | undefined;
   if (
     !m ||
@@ -55,6 +72,28 @@ function checkMeta(slug: unknown, lang: unknown, meta: unknown): ProblemMeta {
   return { slug, frontendId: m.frontendId, title: m.title };
 }
 
+interface Connection {
+  client: GitHubClient;
+  baseDir: string;
+  /** Link to a file ('blob') or folder ('tree') on github.com. */
+  url(kind: 'blob' | 'tree', path: string): string;
+}
+
+function connect(settings: Settings, deps: ServiceDeps): Connection {
+  const ref = parseRepo(settings.repo);
+  if (!ref) throw new Error('The solutions repo setting is not valid.');
+  const baseDir = normalizeBaseDir(settings.baseDir);
+  if (baseDir === null) throw new Error('The base folder setting is not a valid path.');
+  const branch = settings.branch.trim();
+  const client = new GitHubClient({ token: settings.token.trim(), ...ref, branch }, deps.fetch);
+  const url = (kind: 'blob' | 'tree', path: string): string =>
+    `https://github.com/${ref.owner}/${ref.repo}/${kind}/${encodeURIComponent(branch || 'HEAD')}/${path
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`;
+  return { client, baseDir, url };
+}
+
 interface Target {
   client: GitHubClient;
   path: string;
@@ -62,18 +101,9 @@ interface Target {
 }
 
 function target(settings: Settings, meta: ProblemMeta, lang: string, deps: ServiceDeps): Target {
-  const ref = parseRepo(settings.repo);
-  if (!ref) throw new Error('The solutions repo setting is not valid.');
-  const baseDir = normalizeBaseDir(settings.baseDir);
-  if (baseDir === null) throw new Error('The base folder setting is not a valid path.');
-  const branch = settings.branch.trim();
-  const path = solutionPath(baseDir, meta, lang);
-  const client = new GitHubClient({ token: settings.token.trim(), ...ref, branch }, deps.fetch);
-  const fileUrl = `https://github.com/${ref.owner}/${ref.repo}/blob/${encodeURIComponent(branch || 'HEAD')}/${path
-    .split('/')
-    .map(encodeURIComponent)
-    .join('/')}`;
-  return { client, path, fileUrl };
+  const c = connect(settings, deps);
+  const path = solutionPath(c.baseDir, meta, lang);
+  return { client: c.client, path, fileUrl: c.url('blob', path) };
 }
 
 async function pull(req: Extract<BgRequest, { type: 'pull' }>, deps: ServiceDeps): Promise<PullResponse> {
@@ -154,6 +184,90 @@ async function test(req: Extract<BgRequest, { type: 'test' }>, deps: ServiceDeps
   }
 }
 
+// ---------------------------------------------------------------- notes
+
+async function notesList(
+  req: Extract<BgRequest, { type: 'notes/list' }>,
+  deps: ServiceDeps,
+): Promise<NotesListResponse> {
+  try {
+    const meta = checkProblem(req.slug, req.meta);
+    const settings = await loadSettings(deps.store);
+    if (!isConfigured(settings)) return { ok: true, configured: false };
+    const c = connect(settings, deps);
+    const dir = notesDir(c.baseDir, meta);
+    const files = (await c.client.listDir(dir)).filter((f) => isValidNoteName(f.name));
+    return {
+      ok: true,
+      configured: true,
+      files,
+      gapMinutes: settings.notesGapMinutes,
+      dirUrl: c.url('tree', dir),
+    };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+async function notesGet(req: Extract<BgRequest, { type: 'notes/get' }>, deps: ServiceDeps): Promise<NotesGetResponse> {
+  try {
+    const meta = checkProblem(req.slug, req.meta);
+    if (!isValidNoteName(req.name)) throw new Error('Invalid note name.');
+    const settings = await loadSettings(deps.store);
+    if (!isConfigured(settings)) throw new Error('Git sync is not set up yet.');
+    const c = connect(settings, deps);
+    return { ok: true, file: await c.client.getFile(`${notesDir(c.baseDir, meta)}/${req.name}`) };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+async function notesPut(req: Extract<BgRequest, { type: 'notes/put' }>, deps: ServiceDeps): Promise<NotesPutResponse> {
+  try {
+    const meta = checkProblem(req.slug, req.meta);
+    if (!isValidNoteName(req.name)) throw new Error('Invalid note name.');
+    if (typeof req.content !== 'string' || req.content.length > MAX_NOTE || !req.content.startsWith('<svg ')) {
+      throw new Error('The note is missing or too large to save.');
+    }
+    const settings = await loadSettings(deps.store);
+    if (!isConfigured(settings)) throw new Error('Git sync is not set up yet.');
+    const c = connect(settings, deps);
+    const sha = typeof req.expectedSha === 'string' ? req.expectedSha : null;
+    const result = await c.client.putFile(
+      `${notesDir(c.baseDir, meta)}/${req.name}`,
+      req.content,
+      notesCommitMessage(meta, req.name),
+      sha,
+    );
+    return { ok: true, sha: result.sha };
+  } catch (e) {
+    if (e instanceof GitHubError && e.kind === 'conflict') return { ok: false, conflict: true };
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+async function notesDraft(
+  req: Extract<BgRequest, { type: 'notes/draft' }>,
+  deps: ServiceDeps,
+): Promise<NotesDraftResponse> {
+  try {
+    if (!isValidSlug(req.slug)) throw new Error('Invalid problem.');
+    const key = draftKey(req.slug);
+    if (req.op === 'set') {
+      const value = req.value ?? null;
+      if (value !== null && (typeof value !== 'string' || value.length > MAX_NOTE)) {
+        throw new Error('The note is too large to keep.');
+      }
+      await deps.store.set({ [key]: value });
+      return { ok: true, value };
+    }
+    const stored = (await deps.store.get(key))[key];
+    return { ok: true, value: typeof stored === 'string' ? stored : null };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 export async function handleRequest(req: BgRequest, deps: ServiceDeps): Promise<unknown> {
   switch (req?.type) {
     case 'pull':
@@ -164,6 +278,14 @@ export async function handleRequest(req: BgRequest, deps: ServiceDeps): Promise<
       return markBase(req, deps);
     case 'test':
       return test(req, deps);
+    case 'notes/list':
+      return notesList(req, deps);
+    case 'notes/get':
+      return notesGet(req, deps);
+    case 'notes/put':
+      return notesPut(req, deps);
+    case 'notes/draft':
+      return notesDraft(req, deps);
     case 'openOptions':
       deps.openOptions();
       return { ok: true } satisfies SimpleResponse;

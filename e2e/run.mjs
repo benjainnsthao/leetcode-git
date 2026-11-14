@@ -29,6 +29,7 @@ const runId = `e2e-${Date.now().toString(36)}`;
 const cppPath = `${runId}/0001-two-sum/solution.cpp`;
 const pyPath = `${runId}/0001-two-sum/solution.py`;
 const nextPyPath = `${runId}/0002-add-two-numbers/solution.py`;
+const notesPath = `${runId}/0002-add-two-numbers/notes`;
 const DRAFT_WAIT = 25_000;
 
 const TEMPLATES = {
@@ -71,6 +72,13 @@ async function commitElsewhere(p, content) {
     ...(existing ? { sha: existing.sha } : {}),
   });
   if (status !== 200 && status !== 201) throw new Error(`GitHub PUT ${p}: ${status}`);
+}
+
+async function remoteDir(p) {
+  const { status, data } = await gh('GET', `/contents/${p}?ref=${encodeURIComponent(E2E_BRANCH)}&t=${Date.now()}`);
+  if (status === 404) return [];
+  if (status !== 200 || !Array.isArray(data)) throw new Error(`GitHub list ${p}: ${status}`);
+  return data.map((f) => f.name).sort();
 }
 
 async function lastCommitMessage(p) {
@@ -383,6 +391,194 @@ try {
     await pillShows(/Loaded from git/, DRAFT_WAIT);
     expect((await editorCode()) === elsewhere4.trimEnd(), 'repo version not loaded');
     expect(await card.isHidden(), 'prompt was shown');
+  });
+
+  // ---- scratch-paper notes ---------------------------------------------------
+
+  const panel = page.locator('#lcgit-notes .panel');
+  const paper = page.locator('#lcgit-notes svg.paper');
+  const drawn = () => page.locator('#lcgit-notes svg.paper [data-id]').count();
+  const noteLabel = () => page.locator('#lcgit-notes .label').textContent();
+  const tool = (name) => page.locator(`#lcgit-notes button[data-tool="${name}"]`).click();
+  const paperPoint = async (fx, fy) => {
+    const box = await paper.boundingBox();
+    return [box.x + box.width * fx, box.y + box.height * fy];
+  };
+  const dragOnPaper = async (from, to) => {
+    const [x1, y1] = await paperPoint(...from);
+    const [x2, y2] = await paperPoint(...to);
+    await page.mouse.move(x1, y1);
+    await page.mouse.down();
+    await page.mouse.move((x1 + x2) / 2, (y1 + y2) / 2, { steps: 4 });
+    await page.mouse.move(x2, y2, { steps: 4 });
+    await page.mouse.up();
+  };
+  const openNotes = async () => {
+    await page.locator('#lcgit-root .notes').click();
+    await panel.waitFor({ state: 'visible' });
+    await page.locator('#lcgit-notes .loading').waitFor({ state: 'hidden' });
+  };
+  const closeNotes = async () => {
+    await page.locator('#lcgit-notes button[aria-label="Close (Esc)"]').click();
+    await panel.waitFor({ state: 'hidden' });
+  };
+  const openNextProblem = async () => {
+    await page.goto('https://leetcode.com/problems/add-two-numbers/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.monaco?.editor.getModels().some((m) => m.getValue().length > 0));
+    await pillShows(/In sync with git|Loaded from git/);
+  };
+  const noteShapes = (svg) => (svg.match(/&quot;type&quot;:&quot;(\w+)&quot;/g) ?? []).map((m) => m.split('&quot;')[3]);
+
+  await step('the pencil button opens a blank scratch paper', async () => {
+    await openNotes();
+    expect((await noteLabel()) === 'New note', 'unexpected note label');
+    expect((await drawn()) === 0, 'paper is not blank');
+    expect((await remoteDir(notesPath)).length === 0, 'a note file exists before anything was drawn');
+  });
+
+  await step('Alt+N closes and reopens the panel', async () => {
+    await page.keyboard.press('Alt+n');
+    await panel.waitFor({ state: 'hidden' });
+    await page.locator('#code .view-lines').click(); // focus is in the code box
+    await page.keyboard.press('Alt+n');
+    await panel.waitFor({ state: 'visible' });
+  });
+
+  await step('shapes can be drawn, selected, copied and pasted', async () => {
+    await tool('rect');
+    await dragOnPaper([0.3, 0.3], [0.4, 0.42]);
+    expect((await drawn()) === 1, 'rectangle was not drawn');
+
+    await tool('select');
+    const [cx, cy] = await paperPoint(0.35, 0.36);
+    await page.mouse.click(cx, cy); // inside the rectangle
+    expect((await page.locator('#lcgit-notes .selbox').count()) === 1, 'rectangle was not selected');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await page.keyboard.press('Control+v');
+    expect((await drawn()) === 3, 'paste did not add copies');
+    expect((await page.locator('#lcgit-notes .selbox').count()) === 1, 'the pasted copy is not the selection');
+
+    // Drag the last copy away, then check undo/redo.
+    const lastRect = page.locator('#lcgit-notes svg.paper rect[data-id]').last();
+    const before = await lastRect.getAttribute('x');
+    const corner = await lastRect.boundingBox();
+    const [tx, ty] = await paperPoint(0.6, 0.6);
+    await page.mouse.move(corner.x + corner.width - 1, corner.y + corner.height - 1); // its bottom-right corner
+    await page.mouse.down();
+    await page.mouse.move(tx, ty, { steps: 6 });
+    await page.mouse.up();
+    const after = await page.locator('#lcgit-notes svg.paper rect[data-id]').last().getAttribute('x');
+    expect(Number(after) > Number(before) + 100, 'dragging did not move the copy');
+    await page.keyboard.press('Control+z');
+    expect((await page.locator('#lcgit-notes svg.paper rect[data-id]').last().getAttribute('x')) === before, 'undo failed');
+    await page.keyboard.press('Control+Shift+z');
+
+    await tool('arrow');
+    await dragOnPaper([0.42, 0.36], [0.55, 0.36]);
+    await tool('pen');
+    await dragOnPaper([0.3, 0.6], [0.45, 0.7]);
+    expect((await drawn()) === 6, 'arrow (2 parts) and pen stroke were not drawn'); // 3 rects + line + head + path
+    await page.screenshot({ path: path.join(outDir, 'notes.png') });
+  });
+
+  await step('the eraser removes whole shapes', async () => {
+    await tool('eraser');
+    const stroke = await page.locator('#lcgit-notes svg.paper path[data-id]').boundingBox();
+    const mx = stroke.x + stroke.width / 2;
+    const my = stroke.y + stroke.height / 2;
+    await page.mouse.move(mx - 6, my + 6); // drag across the middle of the pen stroke
+    await page.mouse.down();
+    await page.mouse.move(mx + 6, my - 6, { steps: 4 });
+    await page.mouse.up();
+    expect((await drawn()) === 5, 'pen stroke was not erased');
+  });
+
+  await step('keys typed in the panel do not reach the code box', async () => {
+    const code = await editorCode();
+    await panel.focus();
+    await page.keyboard.type('plr');
+    await page.keyboard.press('Delete');
+    expect((await editorCode()) === code, 'code box changed');
+  });
+
+  let firstNote;
+  await step('closing the panel saves the note to the repo as an SVG', async () => {
+    await closeNotes();
+    const files = await until('note file in repo', async () => {
+      const f = await remoteDir(notesPath);
+      return f.length === 1 ? f : null;
+    });
+    firstNote = files[0];
+    expect(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.svg$/.test(firstNote), `unexpected file name: ${firstNote}`);
+    const file = await remoteFile(`${notesPath}/${firstNote}`);
+    expect(file.content.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), 'not an SVG file');
+    expect(noteShapes(file.content).join() === 'rect,rect,rect,arrow', `unexpected shapes: ${noteShapes(file.content)}`);
+    const message = await lastCommitMessage(`${notesPath}/${firstNote}`);
+    expect(/^notes: 2\. Add Two Numbers \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\)$/.test(message), `unexpected message: ${message}`);
+  });
+
+  await step('reopening soon after a reload continues the same note', async () => {
+    await openNextProblem();
+    await openNotes();
+    expect((await drawn()) === 5, 'saved drawing was not restored');
+    expect((await noteLabel()) === firstNote.replace('_', ' ').replace(/-(\d\d)\.svg$/, ':$1'), 'unexpected note label');
+    await tool('ellipse');
+    await dragOnPaper([0.6, 0.25], [0.7, 0.35]);
+    await closeNotes();
+    await until('ellipse saved into the same file', async () =>
+      noteShapes((await remoteFile(`${notesPath}/${firstNote}`)).content).includes('ellipse'),
+    );
+    expect((await remoteDir(notesPath)).length === 1, 'a second file was created within the same session');
+  });
+
+  await step('after a long break, a new blank note starts and the old one is in the history', async () => {
+    // Make the saved note look two hours old, as if the break had happened.
+    const file = await remoteFile(`${notesPath}/${firstNote}`);
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const aged = file.content.replace(/(&quot;savedAt&quot;:&quot;)[^&]+(&quot;)/, `$1${old}$2`);
+    expect(aged !== file.content, 'could not age the note');
+    await commitElsewhere(`${notesPath}/${firstNote}`, aged);
+
+    await openNextProblem();
+    await openNotes();
+    expect((await drawn()) === 0, 'new session is not blank');
+    expect((await noteLabel()) === 'New note', 'unexpected note label');
+    const options = await page.locator('#lcgit-notes select option').allTextContents();
+    expect(options.length === 2 && options[0] === 'History (1)', `unexpected history: ${options}`);
+
+    await tool('line');
+    await dragOnPaper([0.3, 0.3], [0.5, 0.5]);
+    await closeNotes();
+    const files = await until('second note file', async () => {
+      const f = await remoteDir(notesPath);
+      return f.length === 2 ? f : null;
+    });
+    const second = files.find((f) => f !== firstNote);
+    expect(noteShapes((await remoteFile(`${notesPath}/${second}`)).content).join() === 'line', 'unexpected second note');
+    expect((await remoteFile(`${notesPath}/${firstNote}`)).content === aged, 'the earlier note was modified');
+  });
+
+  await step('an earlier note opens read-only and can be copied into the current one', async () => {
+    await openNotes();
+    await page.locator('#lcgit-notes select').selectOption(firstNote);
+    await page.locator('#lcgit-notes .pastbar').waitFor({ state: 'visible' });
+    expect((await drawn()) === 6, 'earlier note not shown'); // 3 rects + arrow (2 parts) + ellipse
+    expect(await page.locator('#lcgit-notes button[data-tool="pen"]').isDisabled(), 'tools are enabled on a read-only note');
+    await dragOnPaper([0.3, 0.6], [0.45, 0.7]); // drawing must do nothing here
+    expect((await drawn()) === 6, 'a read-only note was edited');
+    await page.screenshot({ path: path.join(outDir, 'notes-history.png') });
+
+    await page.locator('#lcgit-notes .pastbar button', { hasText: 'Copy all into current' }).click();
+    await page.locator('#lcgit-notes .pastbar').waitFor({ state: 'hidden' });
+    expect((await drawn()) === 7, 'earlier note was not copied into the current one'); // + today's line
+    await closeNotes();
+    const files = await remoteDir(notesPath);
+    const second = files.find((f) => f !== firstNote);
+    await until('copied shapes saved', async () =>
+      noteShapes((await remoteFile(`${notesPath}/${second}`)).content).length === 6,
+    );
+    expect(files.length === 2, 'unexpected number of note files');
   });
 
   await step('popup reports the problem and its state', async () => {

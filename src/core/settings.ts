@@ -14,6 +14,8 @@ export interface Settings {
   syncDrafts: boolean;
   /** When both sides changed, load the repo version instead of asking. */
   gitAlwaysWins: boolean;
+  /** A new scratch-paper note starts after this long without saving one. */
+  notesGapMinutes: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,7 +25,16 @@ export const DEFAULT_SETTINGS: Settings = {
   baseDir: 'problems',
   syncDrafts: true,
   gitAlwaysWins: false,
+  notesGapMinutes: 60,
 };
+
+export const NOTES_GAP_RANGE = { min: 1, max: 7 * 24 * 60 } as const;
+
+export function clampNotesGap(value: unknown): number {
+  const v = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(v)) return DEFAULT_SETTINGS.notesGapMinutes;
+  return Math.min(NOTES_GAP_RANGE.max, Math.max(NOTES_GAP_RANGE.min, Math.round(v)));
+}
 
 export const SETTINGS_KEY = 'settings';
 
@@ -56,6 +67,7 @@ export function mergeSettings(stored: unknown): Settings {
     if (typeof s.baseDir === 'string') out.baseDir = s.baseDir;
     if (typeof s.syncDrafts === 'boolean') out.syncDrafts = s.syncDrafts;
     if (typeof s.gitAlwaysWins === 'boolean') out.gitAlwaysWins = s.gitAlwaysWins;
+    if (typeof s.notesGapMinutes === 'number') out.notesGapMinutes = clampNotesGap(s.notesGapMinutes);
   }
   return out;
 }

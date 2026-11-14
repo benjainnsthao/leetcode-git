@@ -77,6 +77,16 @@
         </span>
       </label>
 
+      <h2>4. Scratch-paper notes</h2>
+      <label class="field">
+        <span>Start a new note after (minutes)</span>
+        <input id="notesGapMinutes" type="number" min="1" max="10080" step="1" inputmode="numeric" />
+        <small>
+          Opening the notes sooner than this after the last save continues the same note. After a longer break, a new
+          timestamped note starts and the earlier one stays in the history.
+        </small>
+      </label>
+
       <div class="actions">
         <button id="save" class="primary" type="button">Save</button>
         <button id="test" type="button">Test connection</button>

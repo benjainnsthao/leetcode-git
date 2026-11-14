@@ -2,7 +2,14 @@
 
 import type { TestResponse } from '../core/messages';
 import { normalizeBaseDir } from '../core/paths';
-import { loadSettings, parseRepo, saveSettings, type KeyValueStore, type Settings } from '../core/settings';
+import {
+  clampNotesGap,
+  loadSettings,
+  parseRepo,
+  saveSettings,
+  type KeyValueStore,
+  type Settings,
+} from '../core/settings';
 
 const store: KeyValueStore = {
   get: (key) => chrome.storage.local.get(key),
@@ -20,6 +27,7 @@ const fields = {
   baseDir: input('baseDir'),
   syncDrafts: input('syncDrafts'),
   gitAlwaysWins: input('gitAlwaysWins'),
+  notesGapMinutes: input('notesGapMinutes'),
 };
 const note = document.getElementById('note') as HTMLElement;
 const example = document.getElementById('example') as HTMLElement;
@@ -39,6 +47,7 @@ function read(): Settings {
     baseDir: fields.baseDir.value.trim(),
     syncDrafts: fields.syncDrafts.checked,
     gitAlwaysWins: fields.gitAlwaysWins.checked,
+    notesGapMinutes: clampNotesGap(fields.notesGapMinutes.value),
   };
 }
 
@@ -49,6 +58,7 @@ function fill(s: Settings): void {
   fields.baseDir.value = s.baseDir;
   fields.syncDrafts.checked = s.syncDrafts;
   fields.gitAlwaysWins.checked = s.gitAlwaysWins;
+  fields.notesGapMinutes.value = String(s.notesGapMinutes);
   updateExample();
 }
 

@@ -4,6 +4,7 @@ A browser extension that keeps the LeetCode code box and a GitHub repo of your s
 
 - **LeetCode → git.** Your code is committed to your solutions repo about 10 seconds after you stop typing. Accepted submissions get their own commit with runtime and memory.
 - **git → LeetCode.** Opening a problem loads the version from your repo into the code box. That includes changes pushed from somewhere else: another computer, or your own editor and `git push`.
+- **Scratch-paper notes.** A drawing panel for sketching the algorithm. Each working session is saved to the repo as its own timestamped picture, so every problem builds up a dev log you can look back on.
 - **Your repo, your rules.** The solutions repo can be private or public. There is no server; the extension talks to GitHub directly from your browser.
 
 Works in Chrome, Edge, Brave and other Chromium browsers (Manifest V3, Chrome 111+).
@@ -56,6 +57,20 @@ Other details:
 - Commits never overwrite a newer commit. If the repo moved since the extension last looked, you get the same **Use git / Keep mine** choice.
 - Contest pages are not synced.
 
+## Scratch-paper notes
+
+Click the pencil button next to the status pill (or press **Alt+N**) to open a sheet of scratch paper over the problem. Draw the idea, close it, carry on coding.
+
+- **Tools:** select, pen, line, arrow, rectangle, ellipse, eraser; six colours, three thicknesses; undo, redo, clear.
+- **Building arrays and trees quickly:** draw one cell or node, select it, then `Ctrl+C` / `Ctrl+V` (or `Ctrl+D` to duplicate). The copy stays selected so you can drag it into place. Shift-click or drag a box to select several shapes; arrow keys nudge; `Delete` removes.
+- **Sessions.** Each working session is one file named after the time it started. If you reopen the notes within 60 minutes of the last save, you continue the same note. After a longer break you get a blank page and a new file; the earlier note stays in the history. The 60 minutes is a setting.
+- **Saving.** The note is committed 30 seconds after you stop drawing, and right away when you close the panel, switch tabs or leave the problem. Until a save lands, your strokes are also kept in the browser, so a crash does not lose them.
+- **History.** The menu at the right of the toolbar lists the problem's earlier notes. Opening one shows it read-only; you can copy all of it, or a selected part, into the current note.
+- Notes belong to the problem, not to a language. A note that was changed from another computer in the meantime is never overwritten: your drawing is saved as a new note.
+- The eraser removes whole strokes and shapes (the drawing is made of shapes, not pixels).
+
+Notes are SVG files, so GitHub shows them as pictures and they stay small in git.
+
 ### Settings
 
 | Setting | Default | Meaning |
@@ -66,16 +81,20 @@ Other details:
 | Folder | `problems` | Folder inside the repo. Empty means the repo root. |
 | Save drafts while I work | on | Off: only accepted submissions are committed. |
 | Git always wins | off | On: when both sides changed, load the repo version without asking. Unsynced changes in the code box are discarded. |
+| Start a new note after | 60 minutes | How long after the last save a scratch-paper note is still continued. After that, a new note starts. |
 
 ## What the repo looks like
 
-One folder per problem, one file per language:
+One folder per problem, one file per language, and one picture per notes session:
 
 ```
 problems/
   0001-two-sum/
     solution.py
     solution.cpp
+    notes/
+      2026-11-14_09-35.svg
+      2026-11-16_21-10.svg
   0002-add-two-numbers/
     solution.py
 ```
@@ -85,6 +104,7 @@ Commit messages tell you what kind of save it was:
 ```
 draft: 1. Two Sum (python3)
 accepted: 1. Two Sum (python3) - 52 ms, 17.1 MB
+notes: 1. Two Sum (2026-11-14 09:35)
 ```
 
 You can edit these files anywhere and push; the next time you open the problem on LeetCode, your pushed version is loaded.
@@ -94,7 +114,8 @@ You can edit these files anywhere and push; the next time you open the problem o
 - The token is kept in the extension's local storage and is only ever sent to `api.github.com`. The LeetCode page cannot read it, and only the extension's background worker uses it.
 - The extension reads the problem number, title and starter code from LeetCode using your existing session. It sends nothing to LeetCode and has no analytics or third-party servers.
 - A fine-grained token limited to one repo means that, even if the token leaked, only that repo is exposed.
-- If your solutions repo is **public**, your drafts are public too, as you type them. Use a private repo if you do not want that.
+- If your solutions repo is **public**, your drafts and notes are public too, as you make them. Use a private repo if you do not want that.
+- Note files from the repo are read as data only. Their SVG markup is never inserted into the LeetCode page.
 
 ## Limitations
 
@@ -102,12 +123,13 @@ You can edit these files anywhere and push; the next time you open the problem o
 - `leetcode.com` only (not `leetcode.cn`).
 - Chromium browsers only for now.
 - Changes pushed to the repo show up when you open the problem or return to its tab, not while you are looking at it.
+- Notes have no text tool, zoom or pan yet, and note files are named in each computer's local time.
 - The extension depends on details of LeetCode's page (the Monaco editor and its submit requests). If LeetCode changes those, syncing may stop until the extension is updated; it is written so that it stops quietly rather than touching your code.
 
 ## Development
 
 ```sh
-npm test            # unit tests (sync rules, GitHub client, full sync scenarios)
+npm test            # unit tests (sync rules, GitHub client, notes, full sync scenarios)
 npm run typecheck
 npm run build       # writes dist/
 npm run watch       # rebuild on change
@@ -120,6 +142,7 @@ src/core/         pure logic: sync decision, repo paths, settings, text helpers
 src/background/   service worker: the only code that holds the token and calls GitHub
 src/page/         runs inside the LeetCode page: reads/writes the editor, sees submissions
 src/content/      sync engine, status pill and conflict prompt
+src/notes/        scratch paper: drawing model, SVG format, sessions, panel
 src/options/      settings page
 src/popup/        toolbar popup
 tests/            unit tests with an in-memory GitHub

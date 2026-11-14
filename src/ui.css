@@ -51,7 +51,8 @@ code {
 label.field { display: block; margin: 0 0 16px; }
 label.field > span { display: block; font-weight: 600; margin-bottom: 4px; }
 label.field > small { display: block; color: var(--muted); margin-top: 4px; }
-input[type="text"], input[type="password"] {
+input[type="number"] { max-width: 140px; }
+input[type="text"], input[type="password"], input[type="number"] {
   width: 100%;
   padding: 7px 10px;
   font: inherit;

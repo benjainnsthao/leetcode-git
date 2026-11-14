@@ -46,7 +46,14 @@ export class FakeGitHub {
 
     const existing = this.files.get(rest);
     if (method === 'GET') {
-      if (!existing) return json(404, { message: 'Not Found' });
+      if (!existing) {
+        // A folder lists the files directly inside it.
+        const children = [...this.files.entries()]
+          .filter(([p]) => p.startsWith(`${rest}/`) && !p.slice(rest.length + 1).includes('/'))
+          .map(([p, f]) => ({ type: 'file', name: p.slice(rest.length + 1), path: p, sha: f.sha }));
+        if (children.length) return json(200, children);
+        return json(404, { message: 'Not Found' });
+      }
       // GitHub wraps the base64 payload in lines.
       const b64 = utf8ToBase64(existing.content).replace(/(.{60})/g, '$1\n');
       return json(200, { type: 'file', encoding: 'base64', content: b64, sha: existing.sha });

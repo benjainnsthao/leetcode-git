@@ -83,6 +83,25 @@ export function solutionPath(baseDir: string, meta: ProblemMeta, lang: string): 
   return baseDir ? `${baseDir}/${tail}` : tail;
 }
 
+/** Note files are named by their session's start time: 2026-11-14_09-35.svg */
+export const NOTE_FILE_RE = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})(?:-(\d{1,2}))?\.svg$/;
+
+export function isValidNoteName(name: unknown): name is string {
+  return typeof name === 'string' && NOTE_FILE_RE.test(name);
+}
+
+/** Folder holding a problem's scratch-paper notes. */
+export function notesDir(baseDir: string, meta: ProblemMeta): string {
+  const tail = `${problemDir(meta)}/notes`;
+  return baseDir ? `${baseDir}/${tail}` : tail;
+}
+
+export function notesCommitMessage(meta: ProblemMeta, noteName: string): string {
+  const m = NOTE_FILE_RE.exec(noteName);
+  const when = m ? ` (${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]})` : '';
+  return `notes: ${meta.frontendId}. ${meta.title.replace(/\s+/g, ' ').trim()}${when}`;
+}
+
 export function commitMessage(
   kind: CommitKind,
   meta: ProblemMeta,

@@ -12,7 +12,16 @@ const STYLE = `
   font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   pointer-events: none;
 }
-.pill, .card { pointer-events: auto; color: #e8eaed; background: #24292f;
+.row2 { display: flex; align-items: center; gap: 6px; }
+.notes {
+  display: none; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; opacity: .82; transition: opacity .15s;
+}
+.notes.show { display: inline-flex; }
+.notes:hover { opacity: 1; background: #373e47; }
+.notes svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round; }
+.pill, .card, .notes { pointer-events: auto; color: #e8eaed; background: #24292f;
   border: 1px solid rgba(255,255,255,.14); box-shadow: 0 2px 10px rgba(0,0,0,.28); }
 .pill {
   display: none; align-items: center; gap: 6px; max-width: 260px;
@@ -49,10 +58,13 @@ button:focus-visible, .pill:focus-visible { outline: 2px solid #58a6ff; outline-
 export interface UiCallbacks {
   /** The pill was clicked while in the given state. */
   onPillClick(kind: StatusKind, status: Status): void;
+  /** The scratch-paper button was clicked. */
+  onNotesClick(): void;
 }
 
 export class SyncUi {
   private readonly pill: HTMLElement;
+  private readonly notesBtn: HTMLButtonElement;
   private readonly label: HTMLElement;
   private readonly card: HTMLElement;
   private readonly useGitBtn: HTMLButtonElement;
@@ -90,7 +102,21 @@ export class SyncUi {
     this.label = el('span');
     this.pill.append(el('span', 'dot'), this.label);
 
-    wrap.append(this.card, this.pill);
+    this.notesBtn = button('', 'notes');
+    this.notesBtn.title = 'Scratch-paper notes (Alt+N)';
+    this.notesBtn.setAttribute('aria-label', 'Scratch-paper notes');
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 16 16');
+    icon.setAttribute('aria-hidden', 'true');
+    const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    iconPath.setAttribute('d', 'M2.5 13.5l.9-3.6 7.4-7.4 2.7 2.7-7.4 7.4zM9.6 3.7l2.7 2.7');
+    icon.append(iconPath);
+    this.notesBtn.append(icon);
+    this.notesBtn.addEventListener('click', () => callbacks.onNotesClick());
+
+    const row2 = el('div', 'row2');
+    row2.append(this.notesBtn, this.pill);
+    wrap.append(this.card, row2);
     root.append(style, wrap);
 
     this.useGitBtn.addEventListener('click', () => this.handlers?.useGit());
@@ -113,6 +139,7 @@ export class SyncUi {
     const clickable =
       status.kind === 'unconfigured' || status.kind === 'conflict' || status.kind === 'error' || !!status.fileUrl;
     this.pill.className = `pill k-${status.kind}${status.kind === 'hidden' ? '' : ' show'}${clickable ? ' clickable' : ''}`;
+    this.notesBtn.classList.toggle('show', status.kind !== 'hidden');
     this.label.textContent = status.text;
     const hint =
       status.kind === 'unconfigured' || status.kind === 'error'

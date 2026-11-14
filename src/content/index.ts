@@ -6,11 +6,17 @@ import {
   PAGE_TAG,
   type BgRequest,
   type ExtMessage,
+  type NotesDraftResponse,
+  type NotesGetResponse,
+  type NotesListResponse,
+  type NotesPutResponse,
   type PageMessage,
   type PopupRequest,
   type PullResponse,
   type PushResponse,
 } from '../core/messages';
+import { NotesController } from '../notes/controller';
+import { NotesOverlay } from '../notes/overlay';
 import { SyncController, type QuestionMeta } from './controller';
 import { fetchQuestionMeta } from './leetcode';
 import { SyncUi } from './ui';
@@ -65,6 +71,23 @@ const ui = new SyncUi({
     else if (kind === 'unconfigured' || kind === 'error') void ask({ type: 'openOptions' });
     else if (status.fileUrl) window.open(status.fileUrl, '_blank', 'noopener');
   },
+  onNotesClick: () => notes.toggle(),
+});
+
+const notesPanel = new NotesOverlay({
+  onChange: (doc) => notes.onDocChange(doc),
+  onClose: () => notes.onClosed(),
+  onPickHistory: (name) => notes.pickHistory(name),
+  onOpenSettings: () => void ask({ type: 'openOptions' }),
+});
+
+const notes = new NotesController({
+  list: (req) => ask<NotesListResponse>({ type: 'notes/list', ...req }),
+  get: (req) => ask<NotesGetResponse>({ type: 'notes/get', ...req }),
+  put: (req) => ask<NotesPutResponse>({ type: 'notes/put', ...req }),
+  draft: (req) => ask<NotesDraftResponse>({ type: 'notes/draft', ...req }),
+  getMeta,
+  view: notesPanel,
 });
 
 const controller = new SyncController({
@@ -88,6 +111,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       (typeof s.slug === 'string' && typeof s.lang === 'string' && typeof s.code === 'string')
     ) {
       controller.onEditorState(s === null ? null : { slug: s.slug, lang: s.lang, code: s.code, flush: s.flush === true });
+      notes.setProblem(s === null ? null : s.slug);
     }
   } else if (msg.type === 'accepted') {
     const a = msg.submission;
@@ -110,9 +134,27 @@ window.addEventListener('message', (event: MessageEvent) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  controller.onVisibilityChange(document.visibilityState === 'visible');
+  const visible = document.visibilityState === 'visible';
+  controller.onVisibilityChange(visible);
+  if (!visible) notes.onHidden();
 });
-window.addEventListener('pagehide', () => controller.onVisibilityChange(false));
+window.addEventListener('pagehide', () => {
+  controller.onVisibilityChange(false);
+  notes.onHidden();
+});
+
+// Alt+N opens or closes the scratch paper from anywhere on a problem page.
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyN') {
+      e.preventDefault();
+      e.stopPropagation();
+      notes.toggle();
+    }
+  },
+  true,
+);
 
 chrome.runtime.onMessage.addListener((message: PopupRequest, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;

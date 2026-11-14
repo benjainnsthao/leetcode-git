@@ -124,6 +124,23 @@ export class GitHubClient {
     return { content: base64ToUtf8(data.content), sha: data.sha };
   }
 
+  /** Files directly inside a folder. Empty if the folder does not exist. */
+  async listDir(path: string): Promise<{ name: string; sha: string }[]> {
+    const ref = this.cfg.branch ? `?ref=${encodeURIComponent(this.cfg.branch)}` : '';
+    const res = await this.request('GET', `${this.repoUrl}/contents/${encodePath(path)}${ref}`);
+    if (res.status === 404) return [];
+    if (!res.ok) return this.fail(res);
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) return [];
+    const out: { name: string; sha: string }[] = [];
+    for (const entry of data as { type?: unknown; name?: unknown; sha?: unknown }[]) {
+      if (entry && entry.type === 'file' && typeof entry.name === 'string' && typeof entry.sha === 'string') {
+        out.push({ name: entry.name, sha: entry.sha });
+      }
+    }
+    return out;
+  }
+
   /**
    * Creates or updates a file with one commit.
    * `sha` must be the blob sha being replaced, or null to create the file.

@@ -83,7 +83,51 @@ export interface OpenOptionsRequest {
   type: 'openOptions';
 }
 
-export type BgRequest = PullRequest | PushRequest | MarkBaseRequest | TestRequest | OpenOptionsRequest;
+/** Lists a problem's saved notes. */
+export interface NotesListRequest {
+  type: 'notes/list';
+  slug: string;
+  meta: MetaInput;
+}
+
+export interface NotesGetRequest {
+  type: 'notes/get';
+  slug: string;
+  meta: MetaInput;
+  /** File name inside the problem's notes folder. */
+  name: string;
+}
+
+export interface NotesPutRequest {
+  type: 'notes/put';
+  slug: string;
+  meta: MetaInput;
+  name: string;
+  /** The note as SVG text. */
+  content: string;
+  /** Blob sha being replaced; null = the file should not exist yet. */
+  expectedSha: string | null;
+}
+
+/** Unsaved drawing kept in this browser until it reaches the repo. */
+export interface NotesDraftRequest {
+  type: 'notes/draft';
+  slug: string;
+  op: 'get' | 'set';
+  /** For 'set': the draft, or null to discard it. */
+  value?: string | null;
+}
+
+export type BgRequest =
+  | PullRequest
+  | PushRequest
+  | MarkBaseRequest
+  | TestRequest
+  | OpenOptionsRequest
+  | NotesListRequest
+  | NotesGetRequest
+  | NotesPutRequest
+  | NotesDraftRequest;
 
 export interface RemoteFile {
   content: string;
@@ -113,6 +157,32 @@ export type PushResponse =
 export type TestResponse =
   | { ok: true; fullName: string; private: boolean; canPush: boolean; defaultBranch: string }
   | { ok: false; error: string };
+
+export interface NoteFile {
+  name: string;
+  sha: string;
+}
+
+export type NotesListResponse =
+  | { ok: true; configured: false }
+  | {
+      ok: true;
+      configured: true;
+      files: NoteFile[];
+      gapMinutes: number;
+      /** Link to the notes folder on github.com. */
+      dirUrl: string;
+    }
+  | { ok: false; error: string };
+
+export type NotesGetResponse = { ok: true; file: RemoteFile | null } | { ok: false; error: string };
+
+export type NotesPutResponse =
+  | { ok: true; sha: string }
+  | { ok: false; conflict: true }
+  | { ok: false; conflict?: false; error: string };
+
+export type NotesDraftResponse = { ok: true; value: string | null } | { ok: false; error: string };
 
 export type SimpleResponse = { ok: true } | { ok: false; error: string };
 
