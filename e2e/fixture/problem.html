@@ -1,0 +1,112 @@
+<!doctype html>
+<!--
+  Stand-in for a LeetCode problem page, used by the browser test.
+  It reproduces only the surface the extension depends on (checked against the
+  real site on 2026-11-13):
+    - window.monaco, with the code editor's model created as "plaintext" and
+      then switched to the language slug, and a second plaintext editor
+    - code arriving shortly after the editor exists, via setValue (a "flush")
+    - [data-e2e-locator="lang-selector-button"] carrying data-e2e-lang
+    - language switches reusing the same model (setModelLanguage + setValue)
+    - in-page navigation between problems that disposes and recreates editors
+    - the page remembering your code per language and restoring it on load
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Problem – fixture</title>
+    <style>
+      body { margin: 0; font: 14px system-ui, sans-serif; }
+      header { display: flex; gap: 8px; padding: 8px; align-items: center; }
+      #code { height: 520px; border-top: 1px solid #ccc; }
+      #notes { height: 60px; border-top: 1px solid #ccc; }
+      [role="dialog"] { position: absolute; top: 44px; left: 8px; background: #fff; border: 1px solid #999; padding: 6px; z-index: 5; }
+      [role="dialog"] div { padding: 4px 12px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong id="title"></strong>
+      <button id="lang" data-e2e-locator="lang-selector-button" data-e2e-lang="cpp" aria-haspopup="dialog">C++</button>
+      <button id="reset">Reset to default</button>
+      <a id="next" href="/problems/add-two-numbers/">Next problem</a>
+    </header>
+    <div id="langs" role="dialog" hidden>
+      <div data-lang="cpp">C++</div>
+      <div data-lang="python3">Python3</div>
+    </div>
+    <div id="code"></div>
+    <div id="notes"></div>
+
+    <script src="/monaco/vs/loader.js"></script>
+    <script>
+      const TEMPLATES = __TEMPLATES__; // filled in by e2e/run.mjs
+      const NAMES = { cpp: 'C++', python3: 'Python3' };
+      const langButton = document.getElementById('lang');
+      const dialog = document.getElementById('langs');
+
+      require.config({ paths: { vs: '/monaco/vs' } });
+      require(['vs/editor/editor.main'], () => {
+        monaco.languages.register({ id: 'python3' });
+        let editors = [];
+        let lang = localStorage.getItem('fixture:lang') || 'cpp';
+        const slug = () => location.pathname.split('/')[2];
+        const key = (l) => `fixture:${slug()}:${l}`;
+
+        function show(model, l) {
+          lang = l;
+          localStorage.setItem('fixture:lang', l);
+          langButton.setAttribute('data-e2e-lang', l);
+          langButton.textContent = NAMES[l];
+          monaco.editor.setModelLanguage(model, l);
+          model.setValue(localStorage.getItem(key(l)) ?? TEMPLATES[l]);
+        }
+
+        function mount() {
+          document.getElementById('title').textContent = slug();
+          const code = monaco.editor.create(document.getElementById('code'), {
+            value: '',
+            language: 'plaintext',
+            automaticLayout: true,
+            minimap: { enabled: false },
+          });
+          const notes = monaco.editor.create(document.getElementById('notes'), { value: '', language: 'plaintext' });
+          editors = [code, notes];
+          const model = code.getModel();
+          model.onDidChangeContent(() => {
+            if (model.getLanguageId() !== 'plaintext') localStorage.setItem(key(lang), model.getValue());
+          });
+          // The code arrives a moment after the editor exists.
+          setTimeout(() => show(model, lang), 400);
+          return model;
+        }
+
+        function unmount() {
+          for (const e of editors) {
+            const m = e.getModel();
+            e.dispose();
+            m?.dispose();
+          }
+          editors = [];
+        }
+
+        let model = mount();
+
+        langButton.addEventListener('click', () => (dialog.hidden = !dialog.hidden));
+        dialog.addEventListener('click', (e) => {
+          const l = e.target.getAttribute('data-lang');
+          if (!l) return;
+          dialog.hidden = true;
+          show(model, l);
+        });
+        document.getElementById('reset').addEventListener('click', () => model.setValue(TEMPLATES[lang]));
+        document.getElementById('next').addEventListener('click', (e) => {
+          e.preventDefault();
+          unmount();
+          history.pushState({}, '', e.target.getAttribute('href'));
+          setTimeout(() => (model = mount()), 300);
+        });
+      });
+    </script>
+  </body>
+</html>

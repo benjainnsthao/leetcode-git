@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeetCode Git Sync – Settings</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      main { max-width: 620px; margin: 0 auto; padding: 32px 20px 60px; }
+      ol { padding-left: 20px; margin: 0 0 16px; }
+      li { margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>LeetCode Git Sync</h1>
+      <p class="muted">Connect the GitHub repo that holds your solutions. It can be private or public.</p>
+
+      <h2>1. Solutions repo</h2>
+      <label class="field">
+        <span>Repository</span>
+        <input id="repo" type="text" placeholder="your-name/leetcode-solutions" autocomplete="off" spellcheck="false" />
+        <small>
+          As <code>owner/name</code> or a GitHub URL. No repo yet?
+          <a href="https://github.com/new" target="_blank" rel="noopener">Create one on GitHub</a>.
+        </small>
+      </label>
+
+      <h2>2. Access token</h2>
+      <ol class="muted">
+        <li>
+          Open
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener"
+            >GitHub → New fine-grained token</a
+          >.
+        </li>
+        <li>Repository access: <strong>Only select repositories</strong> → pick your solutions repo.</li>
+        <li>Permissions → Repository → <strong>Contents: Read and write</strong>.</li>
+        <li>Generate the token and paste it below.</li>
+      </ol>
+      <label class="field">
+        <span>Personal access token</span>
+        <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
+        <small>Stored only in this browser and sent only to api.github.com.</small>
+      </label>
+
+      <h2>3. Options</h2>
+      <label class="field">
+        <span>Branch</span>
+        <input id="branch" type="text" placeholder="default branch" autocomplete="off" spellcheck="false" />
+        <small>Leave empty to use the repo's default branch.</small>
+      </label>
+      <label class="field">
+        <span>Folder</span>
+        <input id="baseDir" type="text" placeholder="problems" autocomplete="off" spellcheck="false" />
+        <small>
+          Solutions are saved as <code id="example">problems/0001-two-sum/solution.py</code>. Leave empty to use the
+          repo root.
+        </small>
+      </label>
+      <label class="check">
+        <input id="syncDrafts" type="checkbox" />
+        <span>
+          Save drafts while I work
+          <small>Commits your code about 10 seconds after you stop typing, so you can continue on another computer.
+            When off, only accepted submissions are committed.</small>
+        </span>
+      </label>
+      <label class="check">
+        <input id="gitAlwaysWins" type="checkbox" />
+        <span>
+          Git always wins
+          <small>If the code box and the repo have both changed, load the repo version without asking. Unsynced
+            changes in the code box are discarded. When off, you are asked which version to keep.</small>
+        </span>
+      </label>
+
+      <div class="actions">
+        <button id="save" class="primary" type="button">Save</button>
+        <button id="test" type="button">Test connection</button>
+      </div>
+      <p id="note" class="note" role="status" aria-live="polite"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>LeetCode Git Sync</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      body { width: 300px; padding: 14px; }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      #problem { font-weight: 600; overflow-wrap: anywhere; }
+      #state { margin: 2px 0 12px; }
+      .actions { gap: 8px; }
+      .actions button { padding: 5px 10px; font-size: 13px; }
+      #repo { margin: 12px 0 0; }
+    </style>
+  </head>
+  <body>
+    <h1>LeetCode Git Sync</h1>
+    <div id="problem"></div>
+    <p id="state" class="muted" role="status" aria-live="polite">…</p>
+    <div class="actions">
+      <button id="sync" class="primary" type="button" hidden>Sync now</button>
+      <button id="file" type="button" hidden>Open on GitHub</button>
+      <button id="settings" type="button">Settings</button>
+    </div>
+    <p id="repo" class="muted small"></p>
+    <script src="popup.js"></script>
+  </body>
+</html>
